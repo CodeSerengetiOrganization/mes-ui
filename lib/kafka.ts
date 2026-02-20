@@ -28,11 +28,18 @@ async function getProducer(): Promise<Producer> {
   return producer;
 }
 
+/** manufacturing_simple event payload sent to Kafka */
 export interface EolMessagePayload {
+  eventType: "manufacturing_simple";
   barcode: string;
-  manufacturingResult: string | null;
-  timestamp: string;
-  topic: string;
+  productCode: number;
+  productSeq: number;
+  stationCode: number;
+  stationChannelNo: number;
+  result: number; // 1 = pass, 0 = fail
+  operator: string;
+  startTime: string; // ISO 8601
+  endTime: string;   // ISO 8601
 }
 
 /**

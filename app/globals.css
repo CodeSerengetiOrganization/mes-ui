@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #18181b;
-  --foreground: #fafafa;
-  --mes-accent: #dc2626;
-  --mes-pass: #10b981;
-  --mes-fail: #ef4444;
-  --mes-amber: #f59e0b;
+  --background: #f4f4f5;
+  --foreground: #18181b;
+  --mes-accent: #0a6ed1;
+  --mes-pass: #107e3e;
+  --mes-fail: #bb0000;
+  --mes-amber: #e9730c;
 }
 
 @theme inline {

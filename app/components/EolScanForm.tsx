@@ -53,28 +53,28 @@ export function EolScanForm() {
   return (
     <div className="flex w-full max-w-2xl flex-col items-center gap-10">
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        <h1 className="text-4xl font-bold tracking-tight text-zinc-900 sm:text-5xl">
           EOL Raw Data
         </h1>
-        <p className="text-lg text-zinc-400">
-          Enter or scan barcode to send to topic <code className="rounded bg-zinc-700 px-1.5 py-0.5 font-mono text-sm text-zinc-300">eol-raw-data</code>
+        <p className="text-lg text-zinc-600">
+          Enter or scan barcode to send to topic <code className="rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-sm text-zinc-700">eol-raw-data</code>
         </p>
       </div>
 
-      <p className="text-xl text-zinc-300">
+      <p className="text-xl text-zinc-600">
         Scan or type barcode below, then submit to send the Kafka message.
       </p>
 
       <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-end">
         <label className="flex flex-1 flex-col gap-2">
-          <span className="text-sm font-medium text-zinc-400">Barcode</span>
+          <span className="text-sm font-medium text-zinc-600">Barcode</span>
           <input
             type="text"
             value={barcode}
             onChange={(e) => setBarcode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="Scan or enter barcode"
-            className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-3 text-lg text-white placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+            className="rounded-lg border border-zinc-300 bg-white px-4 py-3 text-lg text-zinc-900 placeholder-zinc-500 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
             autoFocus
             disabled={loading}
             aria-label="Barcode input"
@@ -82,11 +82,11 @@ export function EolScanForm() {
         </label>
         <div className="flex gap-3 sm:items-end">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-zinc-400">Result</span>
+            <span className="text-sm font-medium text-zinc-600">Result</span>
             <select
               value={manufacturingResult}
               onChange={(e) => setManufacturingResult(e.target.value as ManufacturingResult)}
-              className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-3 text-white focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              className="rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
               disabled={loading}
               aria-label="Manufacturing result"
             >
@@ -98,7 +98,7 @@ export function EolScanForm() {
             type="button"
             onClick={submit}
             disabled={loading}
-            className="rounded-lg bg-red-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             aria-label="Submit barcode to Kafka"
           >
             {loading ? "Sending…" : "Submit"}
@@ -108,7 +108,7 @@ export function EolScanForm() {
 
       {message !== null && (
         <p
-          className="min-h-[2rem] text-center text-lg text-zinc-200"
+          className="min-h-[2rem] text-center text-lg font-medium text-zinc-900"
           role="status"
           aria-live="polite"
         >
@@ -117,7 +117,7 @@ export function EolScanForm() {
       )}
 
       <div className="flex flex-col items-center gap-3">
-        <span className="text-sm font-medium text-zinc-500">Status</span>
+        <span className="text-sm font-medium text-zinc-600">Status</span>
         <StatusLight state={status} aria-label={`Status: ${status}`} />
       </div>
     </div>

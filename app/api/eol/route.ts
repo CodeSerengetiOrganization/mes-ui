@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import type { EolSubmitBody, EolSubmitResponse } from "@/app/types/eol";
 import { sendEolToKafka } from "@/lib/kafka";
 
-const EOL_RAW_DATA_TOPIC = process.env.KAFKA_TOPIC_EOL_RAW_DATA ?? "eol-raw-data";
-
 function validateBarcode(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -41,11 +39,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<EolSubmit
       );
     }
 
+    const now = new Date();
+    const endTime = new Date(now.getTime() + 3000); // current time + 3 seconds
+    const result = manufacturingResult === "fail" ? 0 : 1; // 1 = pass, 0 = fail
+
     const payload = {
+      eventType: "manufacturing_simple" as const,
       barcode: barcode.trim(),
-      manufacturingResult: manufacturingResult ?? null,
-      timestamp: new Date().toISOString(),
-      topic: EOL_RAW_DATA_TOPIC,
+      productCode: 1001,
+      productSeq: 42,
+      stationCode: 201,
+      stationChannelNo: 1,
+      result,
+      operator: "OP01",
+      startTime: now.toISOString(),
+      endTime: endTime.toISOString(),
     };
 
     try {
@@ -62,17 +70,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EolSubmit
       );
     }
 
-    if (manufacturingResult === "fail") {
-      return NextResponse.json({
-        success: true,
-        message: "Message sent to eol-raw-data. Manufacturing result: FAIL.",
-        status: "fail",
-      });
-    }
-
     return NextResponse.json({
       success: true,
-      message: "Message sent to eol-raw-data. Manufacturing result: PASS.",
+      message: "Message sent to eol-raw-data.",
       status: "pass",
     });
   } catch (err) {

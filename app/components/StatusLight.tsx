@@ -1,6 +1,6 @@
 "use client";
 
-export type StatusLightState = "pass" | "fail" | "error" | "idle";
+export type StatusLightState = "pass" | "fail" | "aborted" | "error" | "idle";
 
 interface StatusLightProps {
   state: StatusLightState;
@@ -8,11 +8,12 @@ interface StatusLightProps {
   className?: string;
 }
 
-/** SAP Fiori semantic hex: pass #107e3e, fail #bb0000, error #e9730c. Idle = neutral gray. */
+/** SAP Fiori semantic hex: pass #107e3e, fail #bb0000, aborted #e9730c,error #e9730c. Idle = neutral gray. */
 const stateStyles: Record<StatusLightState, string> = {
   idle: "bg-zinc-500 shadow-none",
   pass: "bg-[#107e3e] shadow-[0_0_20px_rgba(16,126,62,0.5)]",
   fail: "bg-[#bb0000] shadow-[0_0_20px_rgba(187,0,0,0.5)]",
+  aborted: "bg-[#e9730c] shadow-[0_0_20px_rgba(233,115,12,0.5)]",
   error: "bg-[#e9730c] shadow-[0_0_20px_rgba(233,115,12,0.5)]",
 };
 
@@ -20,6 +21,7 @@ const stateLabels: Record<StatusLightState, string> = {
   idle: "Idle",
   pass: "Pass",
   fail: "Fail",
+  aborted: "Aborted",
   error: "Error",
 };
 

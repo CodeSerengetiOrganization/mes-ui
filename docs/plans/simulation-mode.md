@@ -86,6 +86,7 @@ As an operator testing the MES pipeline, I want to enable simulation mode, confi
 - Client owns serial counter (`useRef`); server remains stateless per request.
 
 ### Tickets
+- [Ticket-7-0] Add Vitest and simulation unit tests
 - [Ticket-7-1] Add simulation types and serial_number formatting utilities
 - [Ticket-7-2] Build SimulationConfigModal component
 - [Ticket-7-3] Migrate Kafka payload to ManufacturingResultEvent and fix topic
@@ -98,21 +99,55 @@ As an operator testing the MES pipeline, I want to enable simulation mode, confi
 
 ## Tickets (detailed, copy-paste ready)
 
-### [Ticket-7-1] Add simulation types and serial_number formatting utilities
+### [Ticket-7-0] Add Vitest and simulation unit tests
 
-**Description:** Define TypeScript types and pure helpers for simulation config and self-incremental `serial_number` generation.
+**Description:** Introduce a unit-test runner for mes-ui and cover simulation helpers from Ticket-7-1. Simulation mode is **long-lived** operational tooling; automated tests prevent regressions in serial formatting and config validation as Story-7 tickets land.
+
+**Depends on:** [Ticket-7-1] (`app/types/simulation.ts`, `lib/simulation.ts` must exist).
 
 **Tasks:**
-- Add to [`app/types/eol.ts`](../../app/types/eol.ts) (or new `app/types/simulation.ts`):
+- Add **Vitest** as dev dependency (`pnpm add -D vitest`).
+- Add [`vitest.config.ts`](../../vitest.config.ts): resolve `@/*` path alias (match [`tsconfig.json`](../../tsconfig.json)); include `**/*.{test,spec}.ts`.
+- Add npm scripts in [`package.json`](../../package.json): `"test": "vitest run"`, `"test:watch": "vitest"`.
+- Add [`lib/simulation.test.ts`](../../lib/simulation.test.ts) — unit tests for `formatSerialNumber` and `validateSimulationConfig` (cases below).
+- Add [`docs/plans/testing-strategy.md`](testing-strategy.md) — copy of **Testing strategy (tech note)** section from this doc (single source for what to test in Story-7 and later).
+- Do **not** add React Testing Library / jsdom in this ticket (pure `lib/` tests only; component testing is optional later).
+
+**Minimum test cases (`lib/simulation.test.ts`):**
+- `formatSerialNumber("SN-TEST-20260519-", 1)` → `SN-TEST-20260519-0001`
+- Counter increment: `1` → `…-0001`, `2` → `…-0002` (default pad width 4)
+- Custom `padWidth` when passed explicitly
+- Valid config (auto and manual) → `validateSimulationConfig` returns `null`
+- Empty / whitespace `serialPrefix` → error
+- `startNumber` &lt; 0 or non-integer → error
+- Auto mode: `intervalSeconds` &lt; 1 or non-integer → error
+- Manual mode: `intervalSeconds` not validated (no error when interval is low)
+
+**Acceptance:**
+- `pnpm test` passes locally with zero failures.
+- No React or Kafka dependencies in the test suite for this ticket.
+- Follow **Testing strategy (tech note)** when adding tests in later tickets (7-3 API route tests are recommended there, not required in 7-0).
+
+---
+
+### [Ticket-7-1] Add simulation types and serial_number formatting utilities
+
+**Description:** Define TypeScript types and pure helpers for simulation config and self-incremental `serial_number` generation. Keep simulation code isolated so it can be deleted with minimal effort when real line functionality ships.
+
+**Tasks:**
+- Add [`app/types/simulation.ts`](../../app/types/simulation.ts) (simulation-only — delete with feature):
   - `SimulationConfig`: `{ serialPrefix, startNumber, intervalSeconds, sendMode: 'auto' | 'manual' }`
-  - `SimulationSendMode`, validation constraints (min interval ≥ 1s, startNumber ≥ 0)
-- Add `ManufacturingResultPayload` type (snake_case) mirroring mes-api `ManufacturingResultEvent` fields used in simulation.
-- Add `lib/serial.ts` (or `utils/simulation.ts`):
+  - `SimulationSendMode`
+  - Constraint constants (min interval ≥ 1s, startNumber ≥ 0, default pad width 4)
+- Add [`lib/simulation.ts`](../../lib/simulation.ts) (simulation-only — delete with feature):
   - `formatSerialNumber(prefix, number, padWidth = 4)` → e.g. `SN-TEST-20260519-0001` (align pad width with mes-api examples)
   - `validateSimulationConfig(config)` with user-facing error strings
+- Do **not** add simulation types to [`app/types/eol.ts`](../../app/types/eol.ts) — that file stays the permanent `POST /api/eol` contract (`EolSubmitBody`, `EolSubmitResponse`, `toOverallResult`).
+- `ManufacturingResultPayload` already lives in [`lib/kafka.ts`](../../lib/kafka.ts) (Ticket-7-3); no duplicate type in this ticket.
 
 **Acceptance:**
 - Unit-testable pure functions; no React dependencies.
+- Only `SimulationConfigModal` and simulation branches in `EolScanForm` import from `simulation.ts` / `lib/simulation.ts`.
 - Output matches `serial_number` format in [`kafka-manufacturing-result-message-example.md`](../../../mes-api/docs/kafka/kafka-manufacturing-result-message-example.md).
 
 ---
@@ -155,6 +190,7 @@ As an operator testing the MES pipeline, I want to enable simulation mode, confi
 - Payload deserializable by mes-api `ManufacturingResultEvent` consumer.
 - Manual scan: user-entered value becomes `serial_number` in Kafka message.
 - Simulation: API accepts incrementing `serial_number` from client each tick.
+- *(Recommended, per [testing-strategy.md](testing-strategy.md)):* route tests for payload shape and `serial_number` mapping — can be same PR or follow-up.
 
 ---
 
@@ -213,16 +249,55 @@ As an operator testing the MES pipeline, I want to enable simulation mode, confi
 
 ---
 
+## Testing strategy (tech note)
+
+Use when implementing Ticket-7-0 and later Story-7 tickets. Canonical copy: [`docs/plans/testing-strategy.md`](testing-strategy.md) (created in Ticket-7-0).
+
+### Industry best practice (practical)
+
+| Situation | Typical practice |
+|-----------|------------------|
+| Pure formatting / validation with clear rules | **Unit tests** — high value, low cost |
+| Long-lived feature code (e.g. simulation helpers) | **Unit tests** — regressions are worth catching |
+| API / Kafka payload contract (`POST /api/eol`, `ManufacturingResultPayload`) | **Integration or route tests** — higher value than UI-only tests |
+| React modal / form wiring (checkbox, Start/Stop) | **Light testing** — manual QA or a few component tests if infra exists |
+| Logic shared by client and server | **Test once** in the shared module (`lib/simulation.ts`, route handler) |
+| Logic only in UI with obvious inline validation | **Lower priority** than shared helpers and API |
+
+### What to test in Story-7
+
+| Layer | File(s) | Priority | Test type |
+|-------|---------|----------|-----------|
+| Serial format + config validation | `lib/simulation.ts` | **High** | Unit (Vitest) — Ticket-7-0 |
+| EOL API payload + defaults | `app/api/eol/route.ts` | **High** | Route / integration — Ticket-7-3 |
+| Kafka key = `serial_number` | `lib/kafka.ts` | **Medium** | Unit with mocked producer, or integration |
+| `SimulationConfigModal` | `app/components/SimulationConfigModal.tsx` | **Low** | Manual QA first |
+| `EolScanForm` simulation loop | `app/components/EolScanForm.tsx` | **Low** | Manual QA; optional hook extraction + unit tests later |
+
+### Out of scope (for Story-7 testing)
+
+- Full E2E (Playwright) unless the team already uses it
+- Unit tests for every React component
+- Tests for Tailwind layout or accessibility (manual check is enough initially)
+
+### CI (when added)
+
+- Run `pnpm test` on every PR; fail the build if unit tests fail.
+
+---
+
 ## Suggested implementation order
 
 ```mermaid
 flowchart LR
+  T0[Ticket-7-0 Tests]
   T1[Ticket-7-1 Types]
   T2[Ticket-7-2 Modal]
   T3[Ticket-7-3 API]
   T4[Ticket-7-4 UI toggle]
   T5[Ticket-7-5 Send loops]
   T6[Ticket-7-6 Banner cleanup]
+  T1 --> T0
   T1 --> T2
   T1 --> T3
   T2 --> T4
@@ -231,21 +306,26 @@ flowchart LR
   T5 --> T6
 ```
 
-1. **Ticket-7-1** + **Ticket-7-3** can run in parallel.
-2. **Ticket-7-2** depends on types.
-3. **Ticket-7-4** → **Ticket-7-5** → **Ticket-7-6** sequential integration.
+1. **Ticket-7-1** first (types and helpers).
+2. **Ticket-7-0** immediately after 7-1 (Vitest + `lib/simulation.test.ts`).
+3. **Ticket-7-3** can run in parallel with **Ticket-7-2** (both depend on 7-1).
+4. **Ticket-7-4** → **Ticket-7-5** → **Ticket-7-6** sequential integration.
 
 ## Key files to touch
 
 | File | Change |
 |------|--------|
+| [`vitest.config.ts`](../../vitest.config.ts) | New — Vitest config, `@/*` alias (Ticket-7-0) |
+| [`lib/simulation.test.ts`](../../lib/simulation.test.ts) | New — unit tests for simulation helpers (Ticket-7-0) |
+| [`docs/plans/testing-strategy.md`](testing-strategy.md) | New — testing tech note (Ticket-7-0) |
+| [`package.json`](../../package.json) | `test` / `test:watch` scripts (Ticket-7-0) |
 | [`app/components/EolScanForm.tsx`](../../app/components/EolScanForm.tsx) | Simulation state, checkbox, Start/Stop, banner |
 | `app/components/SimulationConfigModal.tsx` | New modal |
-| [`app/types/eol.ts`](../../app/types/eol.ts) | `serial_number` in submit body + simulation types |
+| [`app/types/simulation.ts`](../../app/types/simulation.ts) | New — `SimulationConfig`, `SimulationSendMode`, constraint constants |
+| [`lib/simulation.ts`](../../lib/simulation.ts) | New — `formatSerialNumber`, `validateSimulationConfig` |
 | [`app/api/eol/route.ts`](../../app/api/eol/route.ts) | Build `ManufacturingResultPayload` |
 | [`lib/kafka.ts`](../../lib/kafka.ts) | `ManufacturingResultPayload`, topic, key = `serial_number` |
 | [`env.example`](../../env.example) | Document correct topic env var |
-| `lib/serial.ts` | `formatSerialNumber` helper |
 
 ## Open decisions (defaults assumed in tickets)
 

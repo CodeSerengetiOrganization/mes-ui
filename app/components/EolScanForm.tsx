@@ -19,9 +19,12 @@ export function EolScanForm() {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [isSimulationRunning, setIsSimulationRunning] = useState(false);
   const [simulationSending, setSimulationSending] = useState(false);
+  const [lastSerialSent, setLastSerialSent] = useState<string | null>(null);
+  const [simulationMessageCount, setSimulationMessageCount] = useState(0);
 
   const serialCounterRef = useRef(0);
   const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
   const tickInFlightRef = useRef(false);
 
@@ -32,6 +35,8 @@ export function EolScanForm() {
 
   const stopSimulation = useCallback(() => {
     abortedRef.current = true;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
 
     if (intervalIdRef.current !== null) {
       clearInterval(intervalIdRef.current);
@@ -48,6 +53,7 @@ export function EolScanForm() {
 
     tickInFlightRef.current = true;
     setSimulationSending(true);
+    setStatus("idle");
 
     const serial_number = formatSerialNumber(
       simulationConfig.serialPrefix,
@@ -62,6 +68,7 @@ export function EolScanForm() {
           serial_number,
           manufacturingResult,
         }),
+        signal: abortControllerRef.current?.signal,
       });
 
       const data = (await res.json()) as EolSubmitResponse;
@@ -72,12 +79,15 @@ export function EolScanForm() {
       setStatus(data.status);
 
       if (res.ok && data.success) {
+        setLastSerialSent(serial_number);
+        setSimulationMessageCount((count) => count + 1);
         serialCounterRef.current += 1;
       } else {
         stopSimulation();
       }
     } catch (err) {
       if (abortedRef.current) return;
+      if (err instanceof Error && err.name === "AbortError") return;
 
       const text = err instanceof Error ? err.message : "Network error.";
       setMessage(`Send failed: ${text}`);
@@ -92,8 +102,10 @@ export function EolScanForm() {
   useEffect(() => {
     return () => {
       abortedRef.current = true;
+      abortControllerRef.current?.abort();
       if (intervalIdRef.current !== null) {
         clearInterval(intervalIdRef.current);
+        intervalIdRef.current = null;
       }
     };
   }, []);
@@ -130,8 +142,11 @@ export function EolScanForm() {
     if (!simulationConfig || isSimulationRunning) return;
 
     abortedRef.current = false;
+    abortControllerRef.current = new AbortController();
     serialCounterRef.current = simulationConfig.startNumber;
     setIsSimulationRunning(true);
+    setLastSerialSent(null);
+    setSimulationMessageCount(0);
     setMessage(null);
     setStatus("idle");
 
@@ -200,6 +215,37 @@ export function EolScanForm() {
           </code>
         </p>
       </div>
+
+      {isSimulationRunning && (
+        <div
+          className="w-full rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 text-center"
+          role="status"
+          aria-live="polite"
+          aria-label="Manufacturing simulation running"
+        >
+          <p className="text-lg font-semibold text-amber-900">
+            Manufacturing Simulation Running
+          </p>
+          {(lastSerialSent !== null || simulationMessageCount > 0) && (
+            <p className="mt-1 text-sm text-amber-800">
+              {lastSerialSent !== null && (
+                <>
+                  Last serial:{" "}
+                  <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-900">
+                    {lastSerialSent}
+                  </code>
+                </>
+              )}
+              {simulationMessageCount > 0 && (
+                <>
+                  {lastSerialSent !== null && " · "}
+                  Messages sent: {simulationMessageCount}
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       <p className="text-xl text-zinc-600">
         Scan or type serial number below, then submit to send the Kafka message.

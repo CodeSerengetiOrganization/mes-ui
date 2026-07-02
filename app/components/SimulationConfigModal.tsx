@@ -13,6 +13,7 @@ import {
 
 export interface SimulationConfigModalProps {
   open: boolean;
+  initialConfig?: SimulationConfig | null;
   onConfirm: (config: SimulationConfig) => void;
   onCancel: () => void;
 }
@@ -49,8 +50,18 @@ function draftToConfig(draft: DraftFields): SimulationConfig {
   };
 }
 
+function configToDraft(config: SimulationConfig): DraftFields {
+  return {
+    serialPrefix: config.serialPrefix,
+    startNumber: String(config.startNumber),
+    intervalSeconds: String(config.intervalSeconds),
+    sendMode: config.sendMode,
+  };
+}
+
 export function SimulationConfigModal({
   open,
+  initialConfig = null,
   onConfirm,
   onCancel,
 }: SimulationConfigModalProps) {
@@ -65,7 +76,7 @@ export function SimulationConfigModal({
 
     if (open) {
       if (!dialog.open) {
-        setDraft(DEFAULT_DRAFT);
+        setDraft(initialConfig ? configToDraft(initialConfig) : DEFAULT_DRAFT);
         setErrors(null);
         dialog.showModal();
       }
@@ -75,7 +86,7 @@ export function SimulationConfigModal({
     if (dialog.open) {
       dialog.close();
     }
-  }, [open]);
+  }, [open, initialConfig]);
 
   const handleCancel = useCallback(() => {
     onCancel();

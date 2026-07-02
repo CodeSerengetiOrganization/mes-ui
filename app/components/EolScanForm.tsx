@@ -2,7 +2,10 @@
 
 import { useState, useCallback } from "react";
 import { StatusLight, type StatusLightState } from "./StatusLight";
+import { SimulationConfigModal } from "./SimulationConfigModal";
 import type { EolSubmitResponse, ManufacturingResult } from "@/app/types/eol";
+import type { SimulationConfig } from "@/app/types/simulation";
+import { formatSerialNumber } from "@/lib/simulation";
 
 export function EolScanForm() {
   const [serialNumber, setSerialNumber] = useState("");
@@ -10,6 +13,50 @@ export function EolScanForm() {
   const [status, setStatus] = useState<StatusLightState>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [simulationEnabled, setSimulationEnabled] = useState(false);
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig | null>(null);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [isSimulationRunning, setIsSimulationRunning] = useState(false);
+
+  const simulationActive = simulationConfig !== null;
+  const manualFormDisabled = simulationActive || loading;
+
+  const handleSimulationCheckboxChange = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        setSimulationEnabled(true);
+        setConfigModalOpen(true);
+        return;
+      }
+
+      if (isSimulationRunning) return;
+
+      setSimulationEnabled(false);
+      setSimulationConfig(null);
+    },
+    [isSimulationRunning]
+  );
+
+  const handleConfigConfirm = useCallback((config: SimulationConfig) => {
+    setSimulationConfig(config);
+    setConfigModalOpen(false);
+  }, []);
+
+  const handleConfigCancel = useCallback(() => {
+    setConfigModalOpen(false);
+    if (simulationConfig === null) {
+      setSimulationEnabled(false);
+    }
+  }, [simulationConfig]);
+
+  const handleSimulationStart = useCallback(() => {
+    setIsSimulationRunning(true);
+  }, []);
+
+  const handleSimulationStop = useCallback(() => {
+    setIsSimulationRunning(false);
+  }, []);
 
   const submit = useCallback(async () => {
     const trimmed = serialNumber.trim();
@@ -68,6 +115,83 @@ export function EolScanForm() {
         Scan or type serial number below, then submit to send the Kafka message.
       </p>
 
+      <label className="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-white px-4 py-3">
+        <input
+          type="checkbox"
+          checked={simulationEnabled}
+          onChange={(event) => handleSimulationCheckboxChange(event.target.checked)}
+          disabled={isSimulationRunning}
+          className="h-5 w-5 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-600/25 disabled:opacity-50"
+          aria-label="Enable manufacturing simulation"
+        />
+        <span className="text-base font-medium text-zinc-900">
+          Enable Manufacturing Simulation
+        </span>
+      </label>
+
+      {simulationActive && simulationConfig && (
+        <section
+          aria-label="Manufacturing simulation controls"
+          className="flex w-full flex-col gap-4 rounded-lg border border-zinc-300 bg-white p-4"
+        >
+          <h2 className="text-lg font-semibold text-zinc-900">Simulation configuration</h2>
+          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <dt className="font-medium text-zinc-600">Serial prefix</dt>
+              <dd className="font-mono text-zinc-900">{simulationConfig.serialPrefix}</dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="font-medium text-zinc-600">First serial number</dt>
+              <dd className="font-mono text-zinc-900">
+                {formatSerialNumber(
+                  simulationConfig.serialPrefix,
+                  simulationConfig.startNumber
+                )}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="font-medium text-zinc-600">Send mode</dt>
+              <dd className="capitalize text-zinc-900">{simulationConfig.sendMode}</dd>
+            </div>
+            {simulationConfig.sendMode === "auto" && (
+              <div className="flex flex-col gap-1">
+                <dt className="font-medium text-zinc-600">Interval</dt>
+                <dd className="text-zinc-900">{simulationConfig.intervalSeconds}s</dd>
+              </div>
+            )}
+          </dl>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleSimulationStart}
+              disabled={isSimulationRunning}
+              className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+              aria-label="Start manufacturing simulation"
+            >
+              Start
+            </button>
+            <button
+              type="button"
+              onClick={handleSimulationStop}
+              disabled={!isSimulationRunning}
+              className="rounded-lg bg-red-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              aria-label="Stop manufacturing simulation"
+            >
+              Stop
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfigModalOpen(true)}
+              disabled={isSimulationRunning}
+              className="rounded-lg border border-zinc-300 bg-white px-6 py-3 text-lg font-semibold text-zinc-900 transition-colors hover:bg-zinc-50 disabled:opacity-50 sm:ml-auto"
+              aria-label="Edit simulation configuration"
+            >
+              Edit configuration
+            </button>
+          </div>
+        </section>
+      )}
+
       <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-end">
         <label className="flex flex-1 flex-col gap-2">
           <span className="text-sm font-medium text-zinc-600">Serial number</span>
@@ -79,7 +203,7 @@ export function EolScanForm() {
             placeholder="Scan or enter serial number"
             className="rounded-lg border border-zinc-300 bg-white px-4 py-3 text-lg text-zinc-900 placeholder-zinc-500 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
             autoFocus
-            disabled={loading}
+            disabled={manualFormDisabled}
             aria-label="Serial number input"
           />
         </label>
@@ -90,7 +214,7 @@ export function EolScanForm() {
               value={manufacturingResult}
               onChange={(e) => setManufacturingResult(e.target.value as ManufacturingResult)}
               className="rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-              disabled={loading}
+              disabled={manualFormDisabled}
               aria-label="Manufacturing result"
             >
               <option value="pass">Pass</option>
@@ -101,7 +225,7 @@ export function EolScanForm() {
           <button
             type="button"
             onClick={submit}
-            disabled={loading}
+            disabled={manualFormDisabled}
             className="rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             aria-label="Submit serial number to Kafka"
           >
@@ -124,6 +248,13 @@ export function EolScanForm() {
         <span className="text-sm font-medium text-zinc-600">Status</span>
         <StatusLight state={status} aria-label={`Status: ${status}`} />
       </div>
+
+      <SimulationConfigModal
+        open={configModalOpen}
+        initialConfig={simulationConfig}
+        onConfirm={handleConfigConfirm}
+        onCancel={handleConfigCancel}
+      />
     </div>
   );
 }

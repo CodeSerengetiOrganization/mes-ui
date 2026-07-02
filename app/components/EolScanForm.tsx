@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { StatusLight, type StatusLightState } from "./StatusLight";
 import { SimulationConfigModal } from "./SimulationConfigModal";
 import type { EolSubmitResponse, ManufacturingResult } from "@/app/types/eol";
@@ -18,9 +18,85 @@ export function EolScanForm() {
   const [simulationConfig, setSimulationConfig] = useState<SimulationConfig | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [isSimulationRunning, setIsSimulationRunning] = useState(false);
+  const [simulationSending, setSimulationSending] = useState(false);
+
+  const serialCounterRef = useRef(0);
+  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortedRef = useRef(false);
+  const tickInFlightRef = useRef(false);
 
   const simulationActive = simulationConfig !== null;
   const manualFormDisabled = simulationActive || loading;
+  const isManualSimulation =
+    simulationConfig?.sendMode === "manual";
+
+  const stopSimulation = useCallback(() => {
+    abortedRef.current = true;
+
+    if (intervalIdRef.current !== null) {
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+
+    setIsSimulationRunning(false);
+  }, []);
+
+  const sendSimulationTick = useCallback(async () => {
+    if (!simulationConfig || abortedRef.current || tickInFlightRef.current) {
+      return;
+    }
+
+    tickInFlightRef.current = true;
+    setSimulationSending(true);
+
+    const serial_number = formatSerialNumber(
+      simulationConfig.serialPrefix,
+      serialCounterRef.current
+    );
+
+    try {
+      const res = await fetch("/api/eol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serial_number,
+          manufacturingResult,
+        }),
+      });
+
+      const data = (await res.json()) as EolSubmitResponse;
+
+      if (abortedRef.current) return;
+
+      setMessage(data.message);
+      setStatus(data.status);
+
+      if (res.ok && data.success) {
+        serialCounterRef.current += 1;
+      } else {
+        stopSimulation();
+      }
+    } catch (err) {
+      if (abortedRef.current) return;
+
+      const text = err instanceof Error ? err.message : "Network error.";
+      setMessage(`Send failed: ${text}`);
+      setStatus("error");
+      stopSimulation();
+    } finally {
+      tickInFlightRef.current = false;
+      setSimulationSending(false);
+    }
+  }, [simulationConfig, manufacturingResult, stopSimulation]);
+
+  useEffect(() => {
+    return () => {
+      abortedRef.current = true;
+      if (intervalIdRef.current !== null) {
+        clearInterval(intervalIdRef.current);
+      }
+    };
+  }, []);
 
   const handleSimulationCheckboxChange = useCallback(
     (checked: boolean) => {
@@ -51,12 +127,26 @@ export function EolScanForm() {
   }, [simulationConfig]);
 
   const handleSimulationStart = useCallback(() => {
-    setIsSimulationRunning(true);
-  }, []);
+    if (!simulationConfig || isSimulationRunning) return;
 
-  const handleSimulationStop = useCallback(() => {
-    setIsSimulationRunning(false);
-  }, []);
+    abortedRef.current = false;
+    serialCounterRef.current = simulationConfig.startNumber;
+    setIsSimulationRunning(true);
+    setMessage(null);
+    setStatus("idle");
+
+    if (simulationConfig.sendMode === "auto") {
+      void sendSimulationTick();
+
+      intervalIdRef.current = setInterval(() => {
+        void sendSimulationTick();
+      }, simulationConfig.intervalSeconds * 1000);
+    } else {
+      void sendSimulationTick();
+    }
+  }, [simulationConfig, isSimulationRunning, sendSimulationTick]);
+
+  const handleSimulationStop = stopSimulation;
 
   const submit = useCallback(async () => {
     const trimmed = serialNumber.trim();
@@ -161,15 +251,27 @@ export function EolScanForm() {
             )}
           </dl>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={handleSimulationStart}
-              disabled={isSimulationRunning}
-              className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-              aria-label="Start manufacturing simulation"
-            >
-              Start
-            </button>
+            {!isSimulationRunning && (
+              <button
+                type="button"
+                onClick={handleSimulationStart}
+                className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-green-700"
+                aria-label="Start manufacturing simulation"
+              >
+                Start
+              </button>
+            )}
+            {isSimulationRunning && isManualSimulation && (
+              <button
+                type="button"
+                onClick={() => void sendSimulationTick()}
+                disabled={simulationSending}
+                className="rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                aria-label="Send next simulated serial number"
+              >
+                {simulationSending ? "Sending…" : "Send next"}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleSimulationStop}
